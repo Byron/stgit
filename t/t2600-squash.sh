@@ -142,4 +142,49 @@ test_expect_success 'Squash with top != head' '
     test_path_is_missing editor-invoked
 '
 
+test_expect_success 'Squash patches with multiple authors adds Co-authored-by trailers' '
+    echo "a" >>multiple.txt &&
+    stg new -rm "multi-patch-1" --author "Author One <author1@example.com>" &&
+    echo "b" >>multiple.txt &&
+    stg new -rm "multi-patch-2" --author "Author Two <author2@example.com>" &&
+    echo "c" >>multiple.txt &&
+    stg new -rm "multi-patch-3" --author "Author One <author1@example.com>" &&
+    write_script squash-editor <<-\EOF &&
+	#!/bin/sh
+	# Keep everything up to the Co-authored-by trailers, remove only comment lines
+	sed '/^#/d' "$1" > "$1.tmp" && mv "$1.tmp" "$1"
+	EOF
+    EDITOR=./squash-editor stg squash --name=multi-squashed multi-patch-1 multi-patch-2 multi-patch-3 &&
+    test_when_finished "stg delete multi-squashed 2>/dev/null || true" &&
+    stg show multi-squashed | grep "Author:" >out &&
+    cat >expected <<-\EOF &&
+	Author: A Ú Thor <author@example.com>
+	EOF
+    test_cmp expected out &&
+    git log -1 --pretty=format:"%B" >commit_message &&
+    grep "Co-authored-by: Author One <author1@example.com>" commit_message &&
+    grep "Co-authored-by: Author Two <author2@example.com>" commit_message
+'
+
+test_expect_success 'Squash patches with same author does not add Co-authored-by trailers' '
+    echo "x" >>same.txt &&
+    stg new -rm "same-patch-1" --author "Same Author <same@example.com>" &&
+    echo "y" >>same.txt &&
+    stg new -rm "same-patch-2" --author "Same Author <same@example.com>" &&
+    write_script same-editor <<-\EOF &&
+	#!/bin/sh
+	# Keep everything, remove only comment lines  
+	sed '/^#/d' "$1" > "$1.tmp" && mv "$1.tmp" "$1"
+	EOF
+    EDITOR=./same-editor stg squash --name=same-squashed same-patch-1 same-patch-2 &&
+    test_when_finished "stg delete same-squashed 2>/dev/null || true" &&
+    stg show same-squashed | grep "Author:" >out &&
+    cat >expected <<-\EOF &&
+	Author: Same Author <same@example.com>
+	EOF
+    test_cmp expected out &&
+    git log -1 --pretty=format:"%B" >commit_message &&
+    ! grep "Co-authored-by" commit_message
+'
+
 test_done
