@@ -62,6 +62,10 @@
 
 (defvar log-edit-parent-buffer)
 
+;; Silence compiler warnings for functions that may not be available at compile time
+(declare-function git-status "git" (dir))
+(declare-function git-get-top-dir "git" (dir))
+
 (defvar-local stgit-marked-patches nil
   "List of marked patches.")
 
@@ -868,8 +872,8 @@ Cf. `stgit-file-type-strings' and `stgit-file-type-change-string'."
 (defun stgit-file-type-change-string (old-perm new-perm)
   "Return string describing file type change from OLD-PERM to NEW-PERM.
 Cf. `stgit-file-type-string'."
-  (let ((old-type (lsh old-perm -9))
-        (new-type (lsh new-perm -9)))
+  (let ((old-type (ash old-perm -9))
+        (new-type (ash new-perm -9)))
     (cond ((= old-type new-type) "")
           ((zerop new-type) "")
           ((zerop old-type)
