@@ -2,9 +2,10 @@
 
 //! `stg squash` implementation.
 
-use std::fmt::Write;
+use std::{collections::HashMap, fmt::Write};
 
 use anyhow::{anyhow, Result};
+use bstr::ByteSlice;
 use clap::{Arg, ArgMatches};
 
 use crate::{
@@ -221,18 +222,31 @@ fn try_squash(
     patchname: Option<&PatchName>,
 ) -> Result<Option<(PatchName, gix::ObjectId)>> {
     let repo = trans.repo();
+    
+    // Collect authors from all patches being squashed
+    let mut author_counts: HashMap<gix::actor::Signature, usize> = HashMap::new();
+    
+    for patchname in patchnames {
+        let commit = trans.get_patch_commit(patchname);
+        let author = commit.author()?;
+        *author_counts.entry(author.into()).or_insert(0) += 1;
+    }
+    
+    // Determine the final author
+    let final_author = if author_counts.len() == 1 {
+        // All patches have the same author, use that author
+        author_counts.keys().next().unwrap().clone()
+    } else {
+        // Multiple authors, use current user as author
+        repo.get_author()?.into()
+    };
+    
     let base_commit = trans.get_patch_commit(&patchnames[0]);
-    let base_author = base_commit.author()?;
-    let mut use_base_author = true;
     let base_commit_ref = base_commit.decode()?;
     if let Some(tree_id) = repo.stupid().with_temp_index(|stupid_temp| {
         stupid_temp.read_tree(base_commit_ref.tree())?;
         for commit in patchnames[1..].iter().map(|pn| trans.get_patch_commit(pn)) {
             let commit_ref = commit.decode()?;
-            let author = commit.author()?;
-            if author != base_author {
-                use_base_author = false;
-            }
             let parent = commit.get_parent_commit()?;
             let parent_commit_ref = parent.decode()?;
             if parent_commit_ref.tree() != commit_ref.tree()
@@ -249,6 +263,55 @@ fn try_squash(
         let tree_id = stupid_temp.write_tree()?;
         Ok(Some(tree_id))
     })? {
+        // Prepare base message
+        let base_message = prepare_message(trans, patchnames)?;
+        
+        // Create the message with Co-authored-by trailers if needed
+        let message_with_trailers = if author_counts.len() > 1 {
+            // Generate Co-authored-by trailers  
+            let mut trailer_lines = Vec::new();
+            let mut co_authors: Vec<_> = author_counts
+                .iter()
+                .filter(|(author, _)| *author != &final_author)
+                .map(|(author, &count)| (count, author))
+                .collect();
+            
+            // Sort by count (descending), then by name (lexicographically)
+            co_authors.sort_by(|(count_a, author_a), (count_b, author_b)| {
+                count_b.cmp(count_a).then_with(|| {
+                    let name_a = author_a.name.to_str().unwrap_or("");
+                    let name_b = author_b.name.to_str().unwrap_or("");
+                    name_a.cmp(name_b)
+                })
+            });
+            
+            for (_, author) in co_authors {
+                let name = author.name.to_str().map_err(|_| anyhow!("invalid UTF-8 in author name"))?;
+                let email = author.email.to_str().map_err(|_| anyhow!("invalid UTF-8 in author email"))?;
+                trailer_lines.push(format!("Co-authored-by: {name} <{email}>"));
+            }
+            
+            // Add trailers to the base message
+            let mut msg = base_message;
+            if !trailer_lines.is_empty() {
+                // Extract individual patch messages (removing comment lines)
+                let mut clean_messages = Vec::new();
+                for patchname in patchnames {
+                    let commit = trans.get_patch_commit(patchname);
+                    let message_ex = commit.message_ex();
+                    let commit_message = message_ex.decode()?;
+                    clean_messages.push(commit_message.trim().to_string());
+                }
+                
+                // Create a clean squash message without comment lines but with trailers
+                let clean_squash_msg = clean_messages.join("\n\n");
+                msg = format!("{}\n\n{}", clean_squash_msg, trailer_lines.join("\n"));
+            }
+            msg
+        } else {
+            base_message
+        };
+        
         if let patchedit::EditOutcome::Edited {
             new_patchname,
             new_commit_id,
@@ -265,15 +328,8 @@ fn try_squash(
             .allow_template_save(false)
             .template_patchname(patchname)
             .extra_allowed_patchnames(patchnames)
-            .default_author(
-                if use_base_author {
-                    base_author
-                } else {
-                    repo.get_author()?
-                }
-                .override_author(matches)?,
-            )
-            .default_message(prepare_message(trans, patchnames)?)
+            .default_author(final_author.override_author(matches)?)
+            .default_message(message_with_trailers)
             .edit(trans, repo, matches)?
         {
             Ok(Some((
