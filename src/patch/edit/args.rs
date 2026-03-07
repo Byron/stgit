@@ -151,6 +151,34 @@ pub(crate) fn add_args(
                 .action(clap::ArgAction::Append),
         )
         .arg(
+            Arg::new("co-authored-by")
+                .long("co-authored-by")
+                .help("Add Co-authored-by message trailer")
+                .long_help(
+                    "Add \"Co-authored-by\" message trailer.\n\
+                     \n\
+                     This option may be provided multiple times.",
+                )
+                .value_name("value")
+                .num_args(1)
+                .require_equals(true)
+                .action(clap::ArgAction::Append),
+        )
+        .arg(
+            Arg::new("assisted-by")
+                .long("assisted-by")
+                .help("Add Assisted-by message trailer")
+                .long_help(
+                    "Add \"Assisted-by\" message trailer.\n\
+                     \n\
+                     This option may be provided multiple times.",
+                )
+                .value_name("value")
+                .num_args(1)
+                .require_equals(true)
+                .action(clap::ArgAction::Append),
+        )
+        .arg(
             Arg::new("sign-by")
                 .long("sign-by")
                 .help("DEPRECATED: use --sign=value")

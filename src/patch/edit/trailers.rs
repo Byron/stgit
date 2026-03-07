@@ -23,19 +23,26 @@ pub(crate) fn add_trailers<'a, 'b>(
     let mut trailers: Vec<(usize, &str, &str)> = vec![];
 
     for (opt_name, old_by_opt, trailer) in &[
-        ("signoff", "sign-by", "Signed-off-by"),
-        ("ack", "ack-by", "Acked-by"),
-        ("review", "review-by", "Reviewed-by"),
+        ("signoff", Some("sign-by"), "Signed-off-by"),
+        ("ack", Some("ack-by"), "Acked-by"),
+        ("review", Some("review-by"), "Reviewed-by"),
+        ("co-authored-by", None, "Co-authored-by"),
+        ("assisted-by", None, "Assisted-by"),
     ] {
-        let indices_iter = matches
-            .indices_of(opt_name)
-            .unwrap_or_default()
-            .chain(matches.indices_of(old_by_opt).unwrap_or_default());
+        let indices_iter = matches.indices_of(opt_name).unwrap_or_default().chain(
+            old_by_opt
+                .and_then(|old_by_opt| matches.indices_of(old_by_opt))
+                .unwrap_or_default(),
+        );
 
         let values_iter = matches
             .get_many::<String>(opt_name)
             .unwrap_or_default()
-            .chain(matches.get_many::<String>(old_by_opt).unwrap_or_default());
+            .chain(
+                old_by_opt
+                    .and_then(|old_by_opt| matches.get_many::<String>(old_by_opt))
+                    .unwrap_or_default(),
+            );
 
         for (index, value) in indices_iter.zip(values_iter) {
             trailers.push((index, trailer, value));

@@ -295,6 +295,8 @@ impl<'a, 'repo> EditBuilder<'a, 'repo> {
                     "signoff",
                     "ack",
                     "review",
+                    "co-authored-by",
+                    "assisted-by",
                     "sign-by",
                     "ack-by",
                     "review-by",

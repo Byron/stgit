@@ -4,6 +4,9 @@ test_description='Run "stg refresh"'
 
 . ./test-lib.sh
 
+msg () { git cat-file -p "$1" | sed '1,/^$/d' | tr '\n' / | sed 's,/*$,,' ; }
+auth () { git log -n 1 --pretty=format:"%an <%ae>" "$1" ; }
+
 test_expect_success 'Attempt refresh on uninitialized stack' '
     command_error stg refresh 2>err &&
     grep "error: no patches applied" err &&
@@ -184,6 +187,26 @@ test_expect_success 'Attempt update with submodules' '
 test_expect_success 'Test annotate' '
     stg refresh --annotate "My Annotation" &&
     stg log -f | grep -e "My Annotation"
+'
+
+test_expect_success 'Refresh with author override' '
+    echo "override author" >>foo3.txt &&
+    stg refresh --author "Patch Author <patch.author@example.com>" &&
+    test "$(auth HEAD)" = "Patch Author <patch.author@example.com>"
+'
+
+test_expect_success 'Refresh with co-authored-by trailer' '
+    m=$(msg HEAD) &&
+    echo "with coauthor" >>foo3.txt &&
+    stg refresh --co-authored-by="Helper <helper@example.com>" &&
+    test "$(msg HEAD)" = "$m//Co-authored-by: Helper <helper@example.com>"
+'
+
+test_expect_success 'Refresh with assisted-by trailer' '
+    m=$(msg HEAD) &&
+    echo "with assistant" >>foo3.txt &&
+    stg refresh --assisted-by="Assistant <assistant@example.com>" &&
+    test "$(msg HEAD)" = "$m/Assisted-by: Assistant <assistant@example.com>"
 '
 
 test_expect_success 'Attempt refresh with open conflict' '

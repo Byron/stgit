@@ -1251,6 +1251,8 @@ __stg_add_args_savetemplate() {
 __stg_add_args_trailers() {
     subcmd_args+=(
         '--ack=-[add Acked-by trailer]'
+        '--assisted-by=-[add Assisted-by trailer]'
+        '--co-authored-by=-[add Co-authored-by trailer]'
         '--review=-[add Reviewed-by trailer]'
         '--signoff=-[add Signed-off-by trailer]'
     )
